@@ -283,4 +283,27 @@ Now we can tie it all together by filling in our `Execute` method.
  }
 ```
 
-and that is it! We made our first 
+and that is it! We made our first source generator and we are ready to test it. Make sure you rebuild the `SourceGeneration` package befor you press *Rebuild All* 
+
+Head over to `WeatherForecast.cs` and lets test it out.
+```csharp
+using SourceGeneratorTestApi.Enums;
+namespace SourceGeneratorTestApi;
+
+public class WeatherForecast
+{
+    public DateOnly Date { get; set; }
+
+    public int TemperatureC { get; set; }
+
+    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+
+    public string? Summary { get; set; }
+
+    public FruitsEnum Fruits => FruitsEnum.Banana;
+
+}
+
+```
+
+You might still get red squigles under the new enum property. In that case restart your Visual Studio since it wont always update its Analyzers to deal with code generation
