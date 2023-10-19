@@ -1,6 +1,11 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+using System.Threading;
 
 namespace SourceGeneration.SourceGenerators;
 
@@ -60,7 +65,81 @@ internal class MyEnumGenerator : IIncrementalGenerator
 
     static void Execute(Compilation compilation, ImmutableArray<RecordDeclarationSyntax> myEnums, SourceProductionContext context)
     {
+        IEnumerable<RecordDeclarationSyntax> distinctEnums = myEnums.Distinct();
 
+        // Convert each RecordDeclarationSyntax to an EnumToGenerate
+        List<EnumToGenerate> enumsToGenerate = GetTypesToGenerate(compilation, distinctEnums, context.CancellationToken);
+        foreach (var enumToGenerate in enumsToGenerate)
+        {
+            if (enumToGenerate.Values.Count < 1)
+            {
+                continue;
+            }
+            GenerateEnum(context, enumToGenerate);
+        }
     }
 
+    static List<EnumToGenerate> GetTypesToGenerate(Compilation compilation, IEnumerable<RecordDeclarationSyntax> myEnums, CancellationToken ct)
+    {
+        var enumsToGenerate = new List<EnumToGenerate>();
+
+        foreach (RecordDeclarationSyntax recordDeclarationSyntax in myEnums)
+        {
+            // stop if we're asked to
+            ct.ThrowIfCancellationRequested();
+
+            // Get the semantic representation of the enum syntax
+            SemanticModel semanticModel = compilation.GetSemanticModel(recordDeclarationSyntax.SyntaxTree);
+            if (semanticModel.GetDeclaredSymbol(recordDeclarationSyntax) is not INamedTypeSymbol recordSymbol)
+            {
+                // something went wrong, bail out
+                continue;
+            }
+
+            string recordName = recordSymbol.ToString();
+
+            var baseType = recordSymbol.BaseType;
+            var enumType = baseType!.IsGenericType ? baseType.TypeArguments.First() : baseType.BaseType!.TypeArguments.First();
+
+            var properties = recordSymbol.GetMembers().OfType<IPropertySymbol>()
+                                .Where(m => SymbolEqualityComparer.Default.Equals(m.Type, enumType));
+            var members = properties.Select(x => x.Name).ToList();
+
+            // Create an EnumToGenerate for use in the generation phase
+            enumsToGenerate.Add(new EnumToGenerate(recordSymbol.Name, members, recordSymbol.ContainingNamespace.ToString()));
+        }
+
+        return enumsToGenerate;
+    }
+
+    static void GenerateEnum(SourceProductionContext context, EnumToGenerate enumToGenerate)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"namespace {enumToGenerate.Namespace};");
+        sb.AppendLine($"public enum {enumToGenerate.Name}Enum");
+        sb.AppendLine("{");
+
+        foreach (var property in enumToGenerate.Values)
+        {
+            sb.AppendLine("    " + property + ",");
+        }
+
+        sb.AppendLine("}");
+        context.AddSource($"{enumToGenerate.Namespace}.{enumToGenerate.Name}Enum.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
+    }
+
+}
+
+internal readonly struct EnumToGenerate
+{
+    public readonly string Name;
+    public readonly string Namespace;
+    public readonly List<string> Values;
+
+    public EnumToGenerate(string name, List<string> values, string @namespace)
+    {
+        Name = name;
+        Values = values;
+        Namespace = @namespace;
+    }
 }

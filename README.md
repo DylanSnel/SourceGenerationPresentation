@@ -1,5 +1,8 @@
 # SourceGenerationPresentation
 
+This guide will help you rectreate my EpicEnums source generation, or at least a simplified version of that. Please check out the EpicEnums repository.
+
+
 ## Setup the Projects
 
 - Create a solution with a WebApi project (.NET 6 or higher) called ```SourceGeneratorTestApi```
@@ -129,7 +132,7 @@ Now our debugging tool hit the Debugger line and will hit any subsequent breakpp
 
 ## Screening for relevant increments.
 
-Because we want to quickly filter out all the increments we dont want to use we need to create a syntaxprovider.
+Because we want to quickly filter out all the increments we dont want to use we need to create a syntaxprovider. The syntaxprovider helps us weed out what incremental changes we want to act on.
 
 Update `MyEnumGenerator.cs`
 ```csharp
@@ -201,3 +204,83 @@ internal class MyEnumGenerator : IIncrementalGenerator
 }
 
 ```
+
+## Generating code
+Okay time to generate some code. First we create a method that will extract features for the enum we want to create and return a list of those feature objects
+
+```csharp
+static List<EnumToGenerate> GetTypesToGenerate(Compilation compilation, IEnumerable<RecordDeclarationSyntax> myEnums, CancellationToken ct)
+{
+    var enumsToGenerate = new List<EnumToGenerate>();
+
+    foreach (RecordDeclarationSyntax recordDeclarationSyntax in myEnums)
+    {
+        // stop if we're asked to
+        ct.ThrowIfCancellationRequested();
+
+        // Get the semantic representation of the enum syntax
+        SemanticModel semanticModel = compilation.GetSemanticModel(recordDeclarationSyntax.SyntaxTree);
+        if (semanticModel.GetDeclaredSymbol(recordDeclarationSyntax) is not INamedTypeSymbol recordSymbol)
+        {
+            // something went wrong, bail out
+            continue;
+        }
+
+        string recordName = recordSymbol.ToString();
+
+        var baseType = recordSymbol.BaseType;
+        var enumType = baseType!.IsGenericType ? baseType.TypeArguments.First() : baseType.BaseType!.TypeArguments.First();
+
+        var properties = recordSymbol.GetMembers().OfType<IPropertySymbol>()
+                            .Where(m => SymbolEqualityComparer.Default.Equals(m.Type, enumType));
+        var members = properties.Select(x => x.Name).ToList();
+
+        // Create an EnumToGenerate for use in the generation phase
+        enumsToGenerate.Add(new EnumToGenerate(recordSymbol.Name, members, recordSymbol.ContainingNamespace.ToString()));
+    }
+
+    return enumsToGenerate;
+}
+```
+
+Secondly we create our code to generate the enum. You have to make sure that when more enums have to be made the name of the file is always unique.
+
+```csharp
+static void GenerateEnum(SourceProductionContext context, EnumToGenerate enumToGenerate)
+{
+    var sb = new StringBuilder();
+    sb.AppendLine($"namespace {enumToGenerate.Namespace};");
+    sb.AppendLine($"public enum {enumToGenerate.Name}Enum");
+    sb.AppendLine("{");
+
+    foreach (var property in enumToGenerate.Values)
+    {
+        sb.AppendLine("    " + property + ",");
+    }
+
+    sb.AppendLine("}");
+    context.AddSource($"{enumToGenerate.Namespace}.{enumToGenerate.Name}Enum.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
+}
+```
+
+Now we can tie it all together by filling in our `Execute` method.
+
+```csharp
+ static void Execute(Compilation compilation, ImmutableArray<RecordDeclarationSyntax> myEnums, SourceProductionContext context)
+ {
+     IEnumerable<RecordDeclarationSyntax> distinctEnums = myEnums.Distinct();
+
+     // Convert each RecordDeclarationSyntax to an EnumToGenerate
+     List<EnumToGenerate> enumsToGenerate = GetTypesToGenerate(compilation, distinctEnums, context.CancellationToken);
+     foreach (var enumToGenerate in enumsToGenerate)
+     {
+         if (enumToGenerate.Values.Count < 1)
+         {
+             continue;
+         }
+         GenerateEnum(context, enumToGenerate);
+     }
+ }
+```
+
+and that is it! We made our first 
