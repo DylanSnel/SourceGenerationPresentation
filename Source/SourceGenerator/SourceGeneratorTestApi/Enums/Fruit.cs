@@ -1,4 +1,4 @@
-﻿namespace EpicEnums.Tests.FruitsTests;
+﻿namespace SourceGeneratorTestApi.Enums;
 
 public record Fruit
 {

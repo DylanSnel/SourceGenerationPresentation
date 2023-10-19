@@ -55,3 +55,74 @@ public record Fruits : MyEnum<Fruit>
     public static Fruit Banana { get; } = new() { Name = "Banana", Description = "A yellow fruit" };
 }
 ```
+
+
+## Setting up the SourceGenerator
+
+Create `SourceGenerators\MyEnumGenerator.cs` file in `SourceGeneration`  
+
+```csharp
+using Microsoft.CodeAnalysis;
+
+namespace SourceGeneration.SourceGenerators;
+
+[Generator]
+internal class MyEnumGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+
+    }
+}
+```
+
+# Debugging the source generator
+Now we have instantiated our Source generator that will be fired on writing code. But how do we debug it?
+
+We can add a debugger! It is a bit tedious however.
+
+
+```csharp
+using Microsoft.CodeAnalysis;
+
+namespace SourceGeneration.SourceGenerators;
+
+[Generator]
+internal class MyEnumGenerator : IIncrementalGenerator
+{
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+#if DEBUG
+        if (!System.Diagnostics.Debugger.IsAttached)
+        {
+            System.Diagnostics.Debugger.Launch();
+        }
+#endif
+    }
+}
+
+
+```
+
+If we now build the project.... nothing happens.
+
+We need to change something in the `SourceGeneration.csproj`
+```csharp
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SourceGeneration\SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="true" />
+  </ItemGroup>
+
+</Project>
+
+```
+
+If we rebuild all now we can select a debugger. Select option with SourceGenerator in the title since that is the name of our solution.
+Now our debugging tool hit the Debugger line and will hit any subsequent breakppoint
