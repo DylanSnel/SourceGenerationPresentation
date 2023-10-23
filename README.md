@@ -2,6 +2,9 @@
 
 This guide will help you recreate my EpicEnums source generation, or at least a simplified version of that. Please check out the EpicEnums repository.
 
+**Note:** Every step of this project has its own completed branch, so if you get lost you can see the solution there.
+
+
 
 ## Setup the Projects
 
