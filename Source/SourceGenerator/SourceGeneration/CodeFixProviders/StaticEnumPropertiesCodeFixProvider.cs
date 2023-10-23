@@ -1,0 +1,51 @@
+﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
+using SourceGeneration.Analyzers;
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Composition;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace SourceGeneration.CodeFixProviders;
+[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(StaticEnumPropertiesCodeFixProvider)), Shared]
+public class StaticEnumPropertiesCodeFixProvider : CodeFixProvider
+{
+    public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(StaticEnumPropertiesAnalyzer.ErrorId);
+
+    public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
+    {
+        var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+        // Find the diagnostic that has the matching span.
+        var diagnostic = context.Diagnostics.First();
+        var diagnosticSpan = diagnostic.Location.SourceSpan;
+
+        // Find the property declaration identified by the diagnostic.
+        var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<PropertyDeclarationSyntax>().First();
+
+        // Register a code action that will invoke the fix.
+        context.RegisterCodeFix(
+            CodeAction.Create(
+                title: "Make property static",
+                createChangedDocument: c => MakePropertyStaticAsync(context.Document, declaration, c),
+                equivalenceKey: "MakePropertyStatic"),
+            diagnostic);
+    }
+
+    private async Task<Document> MakePropertyStaticAsync(Document document, PropertyDeclarationSyntax propertyDecl, CancellationToken cancellationToken)
+    {
+        // Get the symbol representing the type to be renamed.
+        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+
+        // Add the static modifier to the property
+        editor.SetModifiers(propertyDecl, editor.Generator.GetModifiers(propertyDecl).WithIsStatic(true));
+
+        return editor.GetChangedDocument();
+    }
+}

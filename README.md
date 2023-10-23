@@ -349,7 +349,7 @@ public class StaticEnumPropertiesAnalyzer : DiagnosticAnalyzer
 ```
 
 
-First we will register what type of issue the analyzer will report. Add the following and replace `SuppoortedDiagnostics`
+First we will register what type of issue the analyzer will report. Add the following and replace `SupportedDiagnostics`
 ```csharp
 internal const string ErrorId = "ME0001";
 readonly DiagnosticDescriptor _enumPropertiesShouldBeStaticDescriptor = new(
@@ -409,6 +409,66 @@ Now we should up the version in the `SourceGeneration.csproj` rebuild and then r
 
 Having the analyzer tell the user how they messed up is great. But what would be better than actually solving the problem. So lets write a code fix provider.
 
+Create a new class `CodeFixProviders/StaticEnumPropertiesCodeFixProvider.cs` in our `SourceGeneration` project.
+```csharp
+namespace SourceGeneration.CodeFixProviders;
+[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(StaticEnumPropertiesCodeFixProvider)), Shared]
+public class StaticEnumPropertiesCodeFixProvider : CodeFixProvider
+{
+    public override ImmutableArray<string> FixableDiagnosticIds => throw new NotImplementedException();
+
+    public override Task RegisterCodeFixesAsync(CodeFixContext context)
+    {
+        throw new NotImplementedException();
+    }
+}
+```
+
+Then we will declare what diagnostics we intend to solve:
+
+```csharp
+public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(StaticEnumPropertiesAnalyzer.ErrorId);
+```
+
+Now we have to get our diagnostic that we got from the analyzers and find the correct `SyntaxNode`:
+
+```csharp
+public sealed override async Task RegisterCodeFixesAsync(CodeFixContext context)
+{
+    var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+    // Find the diagnostic that has the matching span.
+    var diagnostic = context.Diagnostics.First();
+    var diagnosticSpan = diagnostic.Location.SourceSpan;
+    // Find the property declaration identified by the diagnostic.
+    var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<PropertyDeclarationSyntax>().First();
+}
+```
+
+All there is left to do now is implement a method to change the code, and register it:
+
+```csharp
+        // Register a code action that will invoke the fix.
+        context.RegisterCodeFix(
+            CodeAction.Create(
+                title: "Make property static",
+                createChangedDocument: c => MakePropertyStaticAsync(context.Document, declaration, c),
+                equivalenceKey: "MakePropertyStatic"),
+            diagnostic);
+    }
+
+    private async Task<Document> MakePropertyStaticAsync(Document document, PropertyDeclarationSyntax propertyDecl, CancellationToken cancellationToken)
+    {
+        // Get the symbol representing the type to be renamed.
+        var editor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
+
+        // Add the static modifier to the property
+        editor.SetModifiers(propertyDecl, editor.Generator.GetModifiers(propertyDecl).WithIsStatic(true));
+
+        return editor.GetChangedDocument();
+    }
+```
+
+Now we should up the version in the `SourceGeneration.csproj` rebuild and then restart Visual Studio. If we revisit the Kiwi property again and press `ctrl + . ` We should be able to tee the codefix.
 
 
 
