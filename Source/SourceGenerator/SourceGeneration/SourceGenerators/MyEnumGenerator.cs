@@ -14,12 +14,12 @@ internal class MyEnumGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-#if DEBUG
-        if (!System.Diagnostics.Debugger.IsAttached)
-        {
-            System.Diagnostics.Debugger.Launch();
-        }
-#endif
+        //#if DEBUG
+        //        if (!System.Diagnostics.Debugger.IsAttached)
+        //        {
+        //            System.Diagnostics.Debugger.Launch();
+        //        }
+        //#endif
 
         // We want to generate code for all the enums that have the MyEnum Basetype
         IncrementalValuesProvider<RecordDeclarationSyntax> myEnumRecords = context.SyntaxProvider

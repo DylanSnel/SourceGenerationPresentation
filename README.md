@@ -1,6 +1,6 @@
 # SourceGenerationPresentation
 
-This guide will help you rectreate my EpicEnums source generation, or at least a simplified version of that. Please check out the EpicEnums repository.
+This guide will help you recreate my EpicEnums source generation, or at least a simplified version of that. Please check out the EpicEnums repository.
 
 
 ## Setup the Projects
@@ -58,6 +58,10 @@ public record Fruits : MyEnum<Fruit>
     public static Fruit Banana { get; } = new() { Name = "Banana", Description = "A yellow fruit" };
 }
 ```
+
+
+
+# Source Generation
 
 
 ## Setting up the SourceGenerator
@@ -306,4 +310,101 @@ public class WeatherForecast
 
 ```
 
-You might still get red squigles under the new enum property. In that case restart your Visual Studio since it wont always update its Analyzers to deal with code generation
+**You might still get red squiggles under the new enum property. In that case restart your Visual Studio since it wont always update its Analyzers to deal with code generation**
+
+
+# Analyzers
+
+When someone now would create a Fruit in the Enum that would not be marked static it would generate all sorts of unclear issues for the user
+
+```csharp
+public record Fruits : MyEnum<Fruit>
+{
+    public static Fruit Apple { get; } = new() { Name = "Apple", Description = "A red fruit" };
+    public static Fruit Banana { get; } = new() { Name = "Banana", Description = "A yellow fruit" };
+    public Fruit Kiwi { get; } = new() { Name = "Kiwi", Description = "A brown fruit" };
+
+}
+
+```
+
+We could write an analyzer for us that would help us understand whats wrong.
+
+Create a new class `Analyzers/StaticEnumPropertiesAnalyzer.cs` in our `SourceGeneration` project.
+
+```csharp
+namespace SourceGeneration.Analyzers;
+
+[DiagnosticAnalyzer(LanguageNames.CSharp)]
+public class StaticEnumPropertiesAnalyzer : DiagnosticAnalyzer
+{
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => throw new NotImplementedException();
+
+    public override void Initialize(AnalysisContext context)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+```
+
+
+First we will register what type of issue the analyzer will report. Add the following and replace `SuppoortedDiagnostics`
+```csharp
+internal const string ErrorId = "ME0001";
+readonly DiagnosticDescriptor _enumPropertiesShouldBeStaticDescriptor = new(
+           id: ErrorId,
+           title: "MyEnum",
+           messageFormat: "MyEnum: Property '{0}' of type '{1}' should be marked as static",
+           category: "MyEnum",
+           DiagnosticSeverity.Error,
+           isEnabledByDefault: true);
+
+public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(_enumPropertiesShouldBeStaticDescriptor);
+```
+
+Now let us implement the actual analyzer.
+
+```csharp
+public override void Initialize(AnalysisContext context)
+{
+    //Register our analyzer for the syntax node types we care about
+    context.RegisterSyntaxNodeAction(AnalyzePropertyDeclaration, SyntaxKind.PropertyDeclaration);
+}
+
+private void AnalyzePropertyDeclaration(SyntaxNodeAnalysisContext context)
+{
+    var propertyDeclaration = (PropertyDeclarationSyntax)context.Node;
+
+    // Check if the enclosing type is a record that inherits from MyEnum<T>
+    if (propertyDeclaration.Parent is RecordDeclarationSyntax recordDeclaration &&
+        recordDeclaration.BaseList is not null)
+    {
+        foreach (var baseType in recordDeclaration.BaseList.Types)
+        {
+            var typeSymbol = context.SemanticModel.GetTypeInfo(baseType.Type).Type as INamedTypeSymbol;
+
+            // Check if the base type is MyEnum<T> where T is the same type as the property
+            if (typeSymbol?.ConstructedFrom.Name == "MyEnum" &&
+                typeSymbol.TypeArguments.Length == 1 &&
+                typeSymbol.TypeArguments[0].Name == propertyDeclaration.Type.ToString())
+            {
+                // Check if the property is not static
+                if (!propertyDeclaration.Modifiers.Any(SyntaxKind.StaticKeyword))
+                {
+                    // Report the diagnostic
+                    var diagnostic = Diagnostic.Create(_enumPropertiesShouldBeStaticDescriptor, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text, propertyDeclaration.Type.ToString());
+                    context.ReportDiagnostic(diagnostic);
+                }
+            }
+        }
+    }
+}
+```
+
+Now we should up the version in the `SourceGeneration.csproj` rebuild and then restart visual studio. It should now give us the error for the kiwi property.
+
+
+# CodeFix
+
+
