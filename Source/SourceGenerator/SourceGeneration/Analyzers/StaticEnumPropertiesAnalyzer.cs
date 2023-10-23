@@ -16,7 +16,7 @@ public class StaticEnumPropertiesAnalyzer : DiagnosticAnalyzer
     readonly DiagnosticDescriptor _enumPropertiesShouldBeStaticDescriptor = new(
                id: ErrorId,
                title: "MyEnum",
-               messageFormat: "EpicEnums: Property '{0}' of type '{1}' should be marked as static",
+               messageFormat: "MyEnum: Property '{0}' of type '{1}' should be marked as static",
                category: "MyEnum",
                DiagnosticSeverity.Error,
                isEnabledByDefault: true);

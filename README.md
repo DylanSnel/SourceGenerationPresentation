@@ -402,9 +402,13 @@ private void AnalyzePropertyDeclaration(SyntaxNodeAnalysisContext context)
 }
 ```
 
-Now we should up the version in the `SourceGeneration.csproj` rebuild and then restart visual studio. It should now give us the error for the kiwi property.
+Now we should up the version in the `SourceGeneration.csproj` rebuild and then restart Visual Studio. It should now give us the error for the kiwi property.
 
 
 # CodeFix
+
+Having the analyzer tell the user how they messed up is great. But what would be better than actually solving the problem. So lets write a code fix provider.
+
+
 
 
